@@ -1,0 +1,44 @@
+#!/bin/sh
+# This is a NetworkManager dispatcher script for chronyd to update
+# its NTP sources passed from DHCP options. Note that this script is
+# specific to NetworkManager-dispatcher due to use of the
+# DHCP4_NTP_SERVERS environment variable. For networkd-dispatcher,
+# an alternative approach is external means such as a dhclient hook.
+
+export LC_ALL=C
+
+interface=$1
+action=$2
+
+chrony_helper=@CHRONY_HELPER@
+default_options=@CHRONY_DEFAULT_OPTIONS@
+server_dir=@CHRONY_SERVER_DIR@
+
+dhcp_server_file=$server_dir/chrony.servers.$interface
+# DHCP4_NTP_SERVERS is passed from DHCP options by NetworkManager.
+nm_dhcp_servers=$DHCP4_NTP_SERVERS
+
+add_servers_from_dhcp() {
+    rm -f "$dhcp_server_file"
+    for server in $nm_dhcp_servers; do
+        echo "$server $default_options" >> "$dhcp_server_file"
+    done
+    $chrony_helper update-daemon || :
+}
+
+clear_servers_from_dhcp() {
+    if [ -f "$dhcp_server_file" ]; then
+        rm -f "$dhcp_server_file"
+        $chrony_helper update-daemon || :
+    fi
+}
+
+mkdir -p $server_dir
+
+if [ "$action" = "up" ] || [ "$action" = "dhcp4-change" ]; then
+    add_servers_from_dhcp
+elif [ "$action" = "down" ]; then
+    clear_servers_from_dhcp
+fi
+
+exit 0
