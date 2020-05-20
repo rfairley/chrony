@@ -1,0 +1,49 @@
+#!/bin/sh
+# This is a NetworkManager dispatcher / networkd-dispatcher script for
+# chronyd to handle its NTP sources. It sets the NTP sources online or
+# offline when a network interface is configured or removed. On DHCP
+# change, chrony will update its NTP sources passed from DHCP options.
+
+export LC_ALL=C
+
+# Make sure the two action interface and action arguments are passed by
+# NetworkManager before continuing.
+[ $# -lt 2 ] && exit 0
+
+interface=$1
+action=$2
+
+server_dir=@CHRONY_SERVER_DIR@
+dhcp_server_file=$server_dir/chrony.servers.$interface
+
+mkdir -p $server_dir
+
+add_servers_from_dhcp() {
+    rm -f "$dhcp_server_file"
+    # DHCP4_NTP_SERVERS is passed from DHCP options by
+    # NetworkManager.
+    for server in $DHCP4_NTP_SERVERS; do
+        echo "$server iburst" >> "$dhcp_server_file"
+    done
+    /usr/libexec/chrony-helper update-daemon || :
+}
+
+clear_servers_from_dhcp() {
+    if [ -f "$dhcp_server_file" ]; then
+        rm -f "$dhcp_server_file"
+        /usr/libexec/chrony-helper update-daemon || :
+    fi
+}
+
+if [ "$action" = "up" ] || [ "$action" = "dhcp4-change" ]; then
+    add_servers_from_dhcp
+elif [ "$action" = "down" ]; then
+    clear_servers_from_dhcp
+fi
+
+if [ "$action" = "up" ] || [ "$action" = "down" ]; then
+    # Note: for networkd-dispatcher routable.d ~= on and off.d ~= off
+    chronyc onoffline > /dev/null 2>&1
+fi
+
+exit 0
