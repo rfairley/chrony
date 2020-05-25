@@ -18,12 +18,20 @@ dhcp_server_file=$server_dir/chrony.servers.$interface
 
 mkdir -p $server_dir
 
+[ -f /etc/sysconfig/network ] && . /etc/sysconfig/network
+[ -f /etc/sysconfig/network-scripts/ifcfg-"${interface}" ] && \
+    . /etc/sysconfig/network-scripts/ifcfg-"${interface}"
+
 add_servers_from_dhcp() {
     rm -f "$dhcp_server_file"
+
+    # Don't add NTP servers if PEERNTP=no specified; return early.
+    [ "$PEERNTP" = "no" ] && return
+
     # DHCP4_NTP_SERVERS is passed from DHCP options by
     # NetworkManager.
     for server in $DHCP4_NTP_SERVERS; do
-        echo "$server iburst" >> "$dhcp_server_file"
+        echo "$server ${NTPSERVERARGS:-iburst}" >> "$dhcp_server_file"
     done
     /usr/libexec/chrony-helper update-daemon || :
 }
@@ -35,10 +43,16 @@ clear_servers_from_dhcp() {
     fi
 }
 
-if [ "$action" = "up" ] || [ "$action" = "dhcp4-change" ]; then
-    add_servers_from_dhcp
-elif [ "$action" = "down" ]; then
-    clear_servers_from_dhcp
+# Check that a dhclient installation is not present, to avoid a
+# redundant operation with dhclient which handles NTP server
+# config through its own NetworkManager dispatcher script
+# 11-dhclient.
+if [ ! -e /usr/sbin/dhclient ]; then
+    if [ "$action" = "up" ] || [ "$action" = "dhcp4-change" ]; then
+        add_servers_from_dhcp
+    elif [ "$action" = "down" ]; then
+        clear_servers_from_dhcp
+    fi
 fi
 
 if [ "$action" = "up" ] || [ "$action" = "down" ]; then
