@@ -12,10 +12,22 @@ default_server_options=@CHRONY_DEFAULT_SERVER_OPTIONS@
 helper_dir=@CHRONY_HELPER_DIR@
 server_dir=@CHRONY_SERVER_DIR@
 
+# If dhclient is installed, the 11-dhclient NetworkManager dispatcher script
+# will have the necessary integration to bring NTP servers from NM/DHCP into
+# chrony. The chrony dispatcher script (20-chrony) will not take action when
+# a dhclient installation is detected. Therefore, make sure we are using the
+# dhclient state directory `/var/lib/dhclient`.
+if [ -e /usr/sbin/dhclient ]; then
+    server_dir=/var/lib/dhclient
+fi
+
+network_sysconfig_file=/etc/sysconfig/network
 dhcp_servers_files="${server_dir}/chrony.servers.*"
 added_servers_file=$helper_dir/added_servers
 dnssrv_servers_files="$helper_dir/dnssrv@*"
 dnssrv_timer_prefix=chrony-dnssrv@
+
+. $network_sysconfig_file &> /dev/null
 
 chrony_command() {
     $chronyc -a -n -m "$1"
@@ -26,7 +38,7 @@ is_running() {
 }
 
 get_servers_files() {
-    echo "$dhcp_servers_files"
+    [ "$PEERNTP" != "no" ] && echo "$dhcp_servers_files"
     echo "$dnssrv_servers_files"
 }
 
@@ -228,7 +240,7 @@ print_help() {
 }
 
 case "$1" in
-    update-daemon)
+    update-daemon|add-dhclient-servers|remove-dhclient-servers)
         is_update_needed || exit 0
         prepare_helper_dir && update_daemon
         ;;
