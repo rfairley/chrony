@@ -6,6 +6,11 @@
 
 export LC_ALL=C
 
+# If a dhclient installation is present, avoid a redundant operation
+# with dhclient which handles NTP server config through its own
+# NetworkManager dispatcher script 11-dhclient.
+[ -e /usr/sbin/dhclient ] && exit 0
+
 interface=$1
 action=$2
 
@@ -17,10 +22,18 @@ dhcp_server_file=$server_dir/$interface.sources
 # DHCP4_NTP_SERVERS is passed from DHCP options by NetworkManager.
 nm_dhcp_servers=$DHCP4_NTP_SERVERS
 
+[ -f /etc/sysconfig/network ] && . /etc/sysconfig/network
+[ -f /etc/sysconfig/network-scripts/ifcfg-"${interface}" ] && \
+    . /etc/sysconfig/network-scripts/ifcfg-"${interface}"
+
 add_servers_from_dhcp() {
     rm -f "$dhcp_server_file"
+
+    # Don't add NTP servers if PEERNTP=no specified; return early.
+    [ "$PEERNTP" = "no" ] && return
+
     for server in $nm_dhcp_servers; do
-        echo "server $server $default_server_options" >> "$dhcp_server_file"
+        echo "server $server ${NTPSERVERARGS:-$default_server_options}" >> "$dhcp_server_file"
     done
     $chronyc reload sources > /dev/null 2>&1 || :
 }
